@@ -1,0 +1,24 @@
+[Unit]
+Description=Survive - Raspberry Pi self-healing health & network watchdog
+Documentation=https://github.com/PierreGode/Survive
+After=network.target
+Wants=network.target
+# Never give up restarting the watchdog itself.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/survive run
+Restart=always
+RestartSec=10
+# systemd restarts the daemon if it stops responding (hangs).
+WatchdogSec=300
+NotifyAccess=all
+# Keep running when the system is under memory pressure or heavy load.
+OOMScoreAdjust=-1000
+Nice=-5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=0
+
+[Install]
+WantedBy=multi-user.target
