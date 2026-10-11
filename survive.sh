@@ -315,6 +315,8 @@ ssh_banner() {
 
 SSH_DETAIL=""
 
+# Loopback first: reachability from outside is covered by the network check;
+# this verifies that sshd is alive and answering.
 check_ssh() {
     local host
     for host in 127.0.0.1 ::1 $(ip -o addr show scope global 2>/dev/null | awk '{ sub(/\/.*/, "", $4); print $4 }'); do
@@ -532,7 +534,8 @@ reboot_deadline() {
 }
 
 package_manager_busy() {
-    pgrep -x 'apt|apt-get|aptitude|dpkg|unattended-upgr|unattended-upgrade' >/dev/null 2>&1
+    pgrep -x 'apt|apt-get|aptitude|dpkg|unattended-upgr' >/dev/null 2>&1 ||
+        pgrep -f '/usr/bin/unattended-upgrade' >/dev/null 2>&1
 }
 
 do_reboot() {
@@ -542,12 +545,16 @@ do_reboot() {
     fi
     sync
     timeout 60 systemctl reboot >/dev/null 2>&1 || timeout 60 reboot >/dev/null 2>&1
-    # If the graceful reboot hangs (wedged system), force it.
+    # If the graceful reboot hangs (wedged system), force it. A SIGTERM means
+    # the shutdown is progressing (a hang from there on is caught by the
+    # hardware watchdog's RebootWatchdogSec).
     nap "$REBOOT_FORCE_TIMEOUT"
+    [[ "$RUNNING" == true ]] || return 0
     event error "Graceful reboot did not complete; forcing reboot"
     sync
     timeout 30 systemctl reboot --force --force >/dev/null 2>&1
     nap 30
+    [[ "$RUNNING" == true ]] || return 0
     if [[ -w /proc/sysrq-trigger ]]; then
         echo 1 >/proc/sys/kernel/sysrq 2>/dev/null
         echo s >/proc/sysrq-trigger
@@ -596,7 +603,7 @@ cleanup_disk() {
     event warn "Root filesystem ${1}% full; cleaning up"
     have journalctl && run_action journalctl --vacuum-size=50M
     have apt-get && run_action apt-get clean
-    run_action find /var/log -type f \( -name '*.gz' -o -name '*.[0-9]' -o -name '*.old' \) -delete
+    run_action find /var/log -type f \( -name '*.gz' -o -name '*.[0-9]' -o -name '*.old' \) -mtime +7 -delete
     run_action find /tmp /var/tmp -xdev -type f -mtime +7 -delete
     event notice "Disk usage after cleanup: $(disk_usage_pct)%"
 }

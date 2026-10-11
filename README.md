@@ -43,7 +43,7 @@ As soon as everything is healthy again the outage is cleared and the timers rese
   automatically and is supervised by the systemd watchdog. Its state lives in
   `/run/survive`, so a daemon restart does not reset an ongoing outage timer.
 * **Health maintenance** (every 5 min) – cleans the journal, apt cache, rotated
-  logs and old temp files when the disk is ≥ 90 % full; logs low memory (with the
+  logs (older than 7 days) and old temp files when the disk is ≥ 90 % full; logs low memory (with the
   biggest processes), high temperature and under-voltage/throttling
   (`vcgencmd`); restarts services listed in `WATCH_SERVICES`.
 * **Persistent incident log** – every problem, repair and reboot is written to
