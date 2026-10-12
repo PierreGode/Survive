@@ -73,11 +73,21 @@ enabled and starts the service.
 
 ## Web dashboard
 
-An optional, read-only status page that shows everything at a glance: overall
-health, system vitals (CPU, temperature, memory, disk, load), under-voltage /
+An optional status page that shows everything at a glance: overall health,
+system vitals (CPU, temperature, memory, disk, load), under-voltage /
 throttling, the crash-loop guard, watched services, every listening TCP port
 and Docker container, and the recent incident log. It auto-refreshes and needs
 no build step or dependencies — just Python 3 (standard library only).
+
+A **Settings** panel lets you change the most useful options live — toggle
+auto-reboot and the crash-loop guard, adjust the grace/reboot timers and
+crash-loop threshold, and pick which systemd services Survive monitors
+(`WATCH_SERVICES`). Changes are written to `survive.conf` and `survive` is
+restarted. Every value is strictly validated before it is written (the config
+is sourced by bash), so the panel cannot be used to inject shell commands.
+Because the panel can change behaviour and restart services, and it has **no
+authentication**, only expose the dashboard on a trusted network — see the
+bind note below.
 
 ```bash
 sudo ./install.sh --with-web            # or, on an existing install:

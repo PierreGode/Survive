@@ -239,6 +239,142 @@ def listening_ports():
     return data
 
 
+# --------------------------------------------------------------------------
+# Settings (read/write a safe subset of survive.conf)
+# --------------------------------------------------------------------------
+# survive.conf is sourced by bash, so every value written here is strictly
+# validated to make shell injection impossible.
+SERVICE_RE = re.compile(r"^[A-Za-z0-9@._:\-]+$")
+
+
+def _v_bool(v):
+    s = str(v).lower()
+    if isinstance(v, bool):
+        return True, ("true" if v else "false")
+    return (True, s) if s in ("true", "false") else (False, None)
+
+
+def _v_int(lo, hi):
+    def f(v):
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return False, None
+        return (True, str(n)) if lo <= n <= hi else (False, None)
+    return f
+
+
+def _v_enum(*opts):
+    def f(v):
+        return (True, str(v)) if str(v) in opts else (False, None)
+    return f
+
+
+def _v_services(v):
+    toks = v.split() if isinstance(v, str) else v
+    if not isinstance(toks, list):
+        return False, None
+    seen = []
+    for t in toks:
+        t = str(t).strip()
+        if not t:
+            continue
+        if not SERVICE_RE.match(t):
+            return False, None
+        if t not in seen:
+            seen.append(t)
+    return True, '"' + " ".join(seen) + '"'
+
+
+EDITABLE = {
+    "ENABLE_REBOOT": _v_bool,
+    "CRASHLOOP_GUARD": _v_bool,
+    "CRASHLOOP_ACTION": _v_enum("stop", "log"),
+    "GRACE_PERIOD": _v_int(10, 3600),
+    "REBOOT_AFTER": _v_int(60, 86400),
+    "CRASHLOOP_THRESHOLD": _v_int(1, 100000),
+    "CRASHLOOP_WINDOW": _v_int(10, 3600),
+    "WATCH_SERVICES": _v_services,
+}
+
+
+def available_services():
+    names = set()
+    for line in sh(["systemctl", "list-unit-files", "--type=service", "--no-legend", "--plain"]).splitlines():
+        parts = line.split()
+        if parts and parts[0].endswith(".service"):
+            names.add(parts[0])
+    return sorted(names)
+
+
+def current_settings():
+    cfg = load_config()
+
+    def i(key, default):
+        try:
+            return int(cfg.get(key, default) or default)
+        except ValueError:
+            return int(default)
+
+    return {
+        "ENABLE_REBOOT": cfg.get("ENABLE_REBOOT", "true").lower() == "true",
+        "CRASHLOOP_GUARD": cfg.get("CRASHLOOP_GUARD", "true").lower() == "true",
+        "CRASHLOOP_ACTION": cfg.get("CRASHLOOP_ACTION", "stop"),
+        "GRACE_PERIOD": i("GRACE_PERIOD", 300),
+        "REBOOT_AFTER": i("REBOOT_AFTER", 600),
+        "CRASHLOOP_THRESHOLD": i("CRASHLOOP_THRESHOLD", 15),
+        "CRASHLOOP_WINDOW": i("CRASHLOOP_WINDOW", 120),
+        "WATCH_SERVICES": [s for s in cfg.get("WATCH_SERVICES", "").split() if s],
+    }
+
+
+def write_conf(normalized):
+    lines = read_file(CONFIG).splitlines()
+    seen = set()
+    out = []
+    for line in lines:
+        m = re.match(r"^(\s*)([A-Za-z_]+)=", line)
+        if m and m.group(2) in normalized:
+            out.append(f"{m.group(1)}{m.group(2)}={normalized[m.group(2)]}")
+            seen.add(m.group(2))
+        else:
+            out.append(line)
+    for key, val in normalized.items():
+        if key not in seen:
+            out.append(f"{key}={val}")
+    tmp = CONFIG + ".tmp"
+    with open(tmp, "w") as fh:
+        fh.write("\n".join(out) + "\n")
+    os.replace(tmp, CONFIG)
+
+
+def apply_settings(updates):
+    if not isinstance(updates, dict) or not updates:
+        return False, "no settings provided"
+    normalized = {}
+    for key, val in updates.items():
+        if key not in EDITABLE:
+            return False, f"unknown setting: {key}"
+        ok, norm = EDITABLE[key](val)
+        if not ok:
+            return False, f"invalid value for {key}"
+        normalized[key] = norm
+    cur = current_settings()
+    try:
+        grace = int(updates.get("GRACE_PERIOD", cur["GRACE_PERIOD"]))
+        reboot = int(updates.get("REBOOT_AFTER", cur["REBOOT_AFTER"]))
+    except (TypeError, ValueError):
+        return False, "invalid timing value"
+    if reboot <= grace:
+        return False, "REBOOT_AFTER must be greater than GRACE_PERIOD"
+    try:
+        write_conf(normalized)
+    except Exception as e:
+        return False, f"could not write {CONFIG}: {e}"
+    sh(["systemctl", "restart", "survive.service"], timeout=20)
+    return True, None
+
+
 def build_status():
     cfg = load_config()
     state = read_state()
@@ -323,6 +459,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}), "application/json")
                 return
             self._send(200, body, "application/json")
+        elif self.path.startswith("/api/settings"):
+            try:
+                body = json.dumps({
+                    "settings": current_settings(),
+                    "available_services": available_services(),
+                })
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}), "application/json")
+                return
+            self._send(200, body, "application/json")
         elif self.path in ("/", "/index.html"):
             html = read_file(os.path.join(WEB_DIR, "index.html"))
             if html:
@@ -335,6 +481,22 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, "not found", "text/plain")
 
     do_HEAD = do_GET
+
+    def do_POST(self):
+        if self.path.rstrip("/") == "/api/settings":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or "{}")
+            except Exception:
+                self._send(400, json.dumps({"error": "invalid JSON body"}), "application/json")
+                return
+            ok, err = apply_settings(payload)
+            if not ok:
+                self._send(400, json.dumps({"error": err}), "application/json")
+                return
+            self._send(200, json.dumps({"ok": True, "settings": current_settings()}), "application/json")
+        else:
+            self._send(404, "not found", "text/plain")
 
 
 def main():

@@ -13,8 +13,10 @@ Environment=SURVIVE_WEB_PORT=8099
 Environment=SURVIVE_WEB_DIR=/usr/local/share/survive-web
 Restart=always
 RestartSec=5
-# Read-only dashboard; keep /usr /etc /boot read-only but leave docker/vcgencmd working.
+# Keep /usr /etc /boot read-only but leave docker/vcgencmd working; the
+# settings panel needs to write survive.conf, so carve that dir out read-write.
 ProtectSystem=full
+ReadWritePaths=/etc/survive
 NoNewPrivileges=true
 
 [Install]

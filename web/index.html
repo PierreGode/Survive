@@ -83,6 +83,32 @@
   .pill b{color:var(--accent)}
   .muted{color:var(--dimmer); font-size:12px}
   .err-banner{background:var(--bad-bg); border:1px solid rgba(248,114,114,.4); color:var(--bad); padding:10px 14px; border-radius:10px; margin-bottom:12px; display:none}
+
+  /* settings */
+  .set-grid{display:grid; gap:0 28px; grid-template-columns:1fr 1fr}
+  @media(max-width:640px){.set-grid{grid-template-columns:1fr}}
+  .set-row{display:flex; align-items:center; gap:14px; padding:11px 0; border-top:1px solid var(--line)}
+  .set-l{font-weight:600}
+  .set-row input[type=number],.set-row select{margin-left:auto; width:120px; background:var(--panel2); border:1px solid var(--line); color:var(--fg); border-radius:8px; padding:7px 10px; font:inherit}
+  .set-block{margin-top:16px; padding-top:14px; border-top:1px solid var(--line)}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0}
+  .chip{display:inline-flex; align-items:center; gap:6px; background:var(--panel2); border:1px solid var(--line); border-radius:999px; padding:5px 6px 5px 12px; font-family:ui-monospace,monospace; font-size:13px}
+  .chip button{background:none; border:0; color:var(--dim); cursor:pointer; font-size:16px; line-height:1; padding:0 5px; border-radius:50%}
+  .chip button:hover{color:var(--bad)}
+  .chip.empty{color:var(--dimmer); border-style:dashed}
+  .addrow{display:flex; gap:8px; max-width:480px}
+  .addrow input{flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--fg); border-radius:8px; padding:9px 11px; font:inherit}
+  .btn{background:var(--accent); color:#04121c; border:0; border-radius:9px; padding:9px 18px; font-weight:700; cursor:pointer; font:inherit}
+  .btn:hover{filter:brightness(1.08)} .btn:disabled{opacity:.5; cursor:default}
+  .btn.ghost{background:var(--panel2); color:var(--fg); border:1px solid var(--line); font-weight:600}
+  .save-row{display:flex; align-items:center; gap:14px; margin-top:18px; padding-top:14px; border-top:1px solid var(--line)}
+  #save-msg.ok{color:var(--ok)} #save-msg.bad{color:var(--bad)}
+  .switch{position:relative; display:inline-block; width:46px; height:26px; margin-left:auto; flex:none}
+  .switch input{opacity:0; width:0; height:0}
+  .slider{position:absolute; inset:0; background:#2a3642; border-radius:999px; transition:.2s; cursor:pointer}
+  .slider:before{content:""; position:absolute; height:20px; width:20px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s}
+  .switch input:checked+.slider{background:var(--ok)}
+  .switch input:checked+.slider:before{transform:translateX(20px)}
 </style>
 </head>
 <body>
@@ -132,6 +158,59 @@
   <div class="card">
     <h2>Services</h2>
     <div id="svc"></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card wide" id="settings-card">
+    <h2>⚙ Settings</h2>
+    <div class="set-grid">
+      <div class="set-row">
+        <div><div class="set-l">Auto-reboot</div><div class="muted">Reboot the Pi if unreachable past the timer</div></div>
+        <label class="switch"><input type="checkbox" id="s-reboot"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div><div class="set-l">Crash-loop guard</div><div class="muted">Stop runaway restarting services</div></div>
+        <label class="switch"><input type="checkbox" id="s-guard"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div><div class="set-l">Grace period</div><div class="muted">Self-recovery time before repairs (s)</div></div>
+        <input type="number" id="s-grace" min="10" max="3600">
+      </div>
+      <div class="set-row">
+        <div><div class="set-l">Reboot after</div><div class="muted">Unreachable this long → reboot (s, &gt; grace)</div></div>
+        <input type="number" id="s-rebootafter" min="60" max="86400">
+      </div>
+      <div class="set-row">
+        <div><div class="set-l">Crash-loop threshold</div><div class="muted">Restarts within the window</div></div>
+        <input type="number" id="s-clthr" min="1" max="100000">
+      </div>
+      <div class="set-row">
+        <div><div class="set-l">Crash-loop window</div><div class="muted">Seconds the restarts are counted over</div></div>
+        <input type="number" id="s-clwin" min="10" max="3600">
+      </div>
+      <div class="set-row">
+        <div><div class="set-l">Crash-loop action</div><div class="muted">Stop the unit, or only log it</div></div>
+        <select id="s-claction"><option value="stop">stop</option><option value="log">log</option></select>
+      </div>
+    </div>
+
+    <div class="set-block">
+      <div class="set-l">Monitored services</div>
+      <div class="muted">Survive keeps these systemd units running (restarts them if they die, unless the crash-loop guard stopped them).</div>
+      <div class="chips" id="watch-chips"></div>
+      <div class="addrow">
+        <input type="text" id="watch-input" list="svc-list" placeholder="e.g. nginx.service" autocomplete="off">
+        <datalist id="svc-list"></datalist>
+        <button class="btn ghost" id="watch-add" type="button">Add</button>
+      </div>
+      <div class="muted" id="watch-note" style="margin-top:8px"></div>
+    </div>
+
+    <div class="save-row">
+      <button class="btn" id="save" type="button">Save &amp; apply</button>
+      <span id="save-msg" class="muted"></span>
+    </div>
   </div>
 </div>
 
@@ -277,6 +356,71 @@ async function tick(){
 }
 tick();
 setInterval(tick,4000);
+
+/* ---- settings ---- */
+let watch=[];
+const SVC_RE=/^[A-Za-z0-9@._:-]+$/;
+function renderChips(){
+  const c=$('#watch-chips'); c.innerHTML='';
+  if(!watch.length){ c.innerHTML='<span class="chip empty">none — Survive monitors nothing extra</span>'; return; }
+  watch.forEach((s,i)=>{
+    const el=document.createElement('span'); el.className='chip';
+    el.innerHTML=`${s}<button title="remove" data-i="${i}">×</button>`;
+    el.querySelector('button').onclick=()=>{ watch.splice(i,1); renderChips(); };
+    c.appendChild(el);
+  });
+}
+function addWatch(){
+  const inp=$('#watch-input'); let v=inp.value.trim(); const note=$('#watch-note');
+  if(!v) return;
+  if(!v.includes('.')) v+='.service';
+  if(!SVC_RE.test(v)){ note.textContent='Invalid unit name.'; note.className='muted'; note.style.color='var(--bad)'; return; }
+  if(!watch.includes(v)) watch.push(v);
+  inp.value=''; note.style.color='';
+  note.textContent = /magicmirror|mm/i.test(v) ? 'Note: MagicMirror runs under pm2, not systemd — this only works if a matching systemd unit exists.' : '';
+  renderChips();
+}
+async function loadSettings(){
+  try{
+    const r=await fetch('/api/settings',{cache:'no-store'}); const d=await r.json();
+    const s=d.settings;
+    $('#s-reboot').checked=s.ENABLE_REBOOT;
+    $('#s-guard').checked=s.CRASHLOOP_GUARD;
+    $('#s-grace').value=s.GRACE_PERIOD;
+    $('#s-rebootafter').value=s.REBOOT_AFTER;
+    $('#s-clthr').value=s.CRASHLOOP_THRESHOLD;
+    $('#s-clwin').value=s.CRASHLOOP_WINDOW;
+    $('#s-claction').value=s.CRASHLOOP_ACTION;
+    watch=s.WATCH_SERVICES.slice(); renderChips();
+    $('#svc-list').innerHTML=(d.available_services||[]).map(x=>`<option value="${x}">`).join('');
+  }catch(e){ $('#save-msg').textContent='could not load settings'; }
+}
+async function saveSettings(){
+  const btn=$('#save'), msg=$('#save-msg');
+  const payload={
+    ENABLE_REBOOT:$('#s-reboot').checked,
+    CRASHLOOP_GUARD:$('#s-guard').checked,
+    CRASHLOOP_ACTION:$('#s-claction').value,
+    GRACE_PERIOD:+$('#s-grace').value,
+    REBOOT_AFTER:+$('#s-rebootafter').value,
+    CRASHLOOP_THRESHOLD:+$('#s-clthr').value,
+    CRASHLOOP_WINDOW:+$('#s-clwin').value,
+    WATCH_SERVICES:watch,
+  };
+  btn.disabled=true; msg.className=''; msg.style.color=''; msg.textContent='saving…';
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status));
+    msg.style.color='var(--ok)'; msg.textContent='✓ saved — Survive restarted';
+    tick();
+  }catch(e){ msg.style.color='var(--bad)'; msg.textContent='✗ '+e.message; }
+  finally{ btn.disabled=false; setTimeout(()=>{msg.textContent='';},6000); }
+}
+$('#watch-add').onclick=addWatch;
+$('#watch-input').addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();addWatch();} });
+$('#save').onclick=saveSettings;
+loadSettings();
 </script>
 </body>
 </html>
