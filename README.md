@@ -46,6 +46,12 @@ As soon as everything is healthy again the outage is cleared and the timers rese
   logs (older than 7 days) and old temp files when the disk is ≥ 90 % full; logs low memory (with the
   biggest processes), high temperature and under-voltage/throttling
   (`vcgencmd`); restarts services listed in `WATCH_SERVICES`.
+* **Crash-loop guard** – a service stuck restarting in a tight loop (e.g. a
+  wrong/stale bind address) pegs the CPU and can make the whole Pi
+  unresponsive. Survive watches systemd's per-unit restart counter and stops a
+  runaway unit (`reset-failed` too) so the system stays reachable; you fix the
+  unit and start it again. `survive.service` and SSH are always protected, and
+  extra units can be exempted via `CRASHLOOP_IGNORE`.
 * **Persistent incident log** – every problem, repair and reboot is written to
   `/var/lib/survive/events.log`, so you can see why the Pi rebooted.
 
@@ -88,6 +94,11 @@ The most important settings:
 | `REQUIRE_INTERNET` | `false` | `false`: reaching the gateway is enough |
 | `INTERFACES` | auto | interfaces to monitor/repair, e.g. `"wlan0"` |
 | `WATCH_SERVICES` | empty | extra services to keep running |
+| `CRASHLOOP_GUARD` | `true` | stop services stuck in a restart loop |
+| `CRASHLOOP_THRESHOLD` | `15` | restarts within the window that count as a loop |
+| `CRASHLOOP_WINDOW` | `120` | seconds the restarts are counted over |
+| `CRASHLOOP_ACTION` | `stop` | `stop` the unit, or only `log` it |
+| `CRASHLOOP_IGNORE` | empty | units to never stop (survive/ssh always protected) |
 
 See the comments in [`survive.conf`](survive.conf) for all options.
 
