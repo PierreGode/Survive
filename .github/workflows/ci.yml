@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck -x survive.sh install.sh uninstall.sh tests/test_survive.sh
+      - name: Tests
+        run: bash tests/test_survive.sh
+      - name: Verify systemd unit
+        run: |
+          sudo install -m 0755 survive.sh /usr/local/bin/survive
+          systemd-analyze verify ./survive.service
