@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Survive</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#131a22; --panel2:#0f151c; --line:#1f2a36;
+    --fg:#e6edf3; --dim:#8b98a5; --dimmer:#5c6773;
+    --ok:#36d399; --warn:#fbbd23; --bad:#f87272; --accent:#38bdf8;
+    --ok-bg:rgba(54,211,153,.12); --warn-bg:rgba(251,189,35,.12); --bad-bg:rgba(248,114,114,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; padding:16px; max-width:1200px; margin:0 auto;
+  }
+  a{color:var(--accent)}
+  header{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px}
+  .logo{font-weight:800; font-size:22px; letter-spacing:.5px}
+  .logo b{color:var(--accent)}
+  .meta{color:var(--dim); font-size:12px; display:flex; gap:14px; flex-wrap:wrap; margin-left:auto; align-items:center}
+  .pulse{width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 0 var(--ok); animation:p 2s infinite}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(54,211,153,.5)}70%{box-shadow:0 0 0 7px rgba(54,211,153,0)}100%{box-shadow:0 0 0 0 rgba(54,211,153,0)}}
+
+  .hero{
+    border-radius:16px; padding:22px 24px; margin-bottom:16px; border:1px solid var(--line);
+    display:flex; align-items:center; gap:22px; flex-wrap:wrap;
+    background:linear-gradient(135deg,var(--panel),var(--panel2));
+  }
+  .hero.ok{border-color:rgba(54,211,153,.4); background:linear-gradient(135deg,var(--ok-bg),var(--panel2))}
+  .hero.bad{border-color:rgba(248,114,114,.5); background:linear-gradient(135deg,var(--bad-bg),var(--panel2))}
+  .hero.warn{border-color:rgba(251,189,35,.4); background:linear-gradient(135deg,var(--warn-bg),var(--panel2))}
+  .hero .state{font-size:34px; font-weight:800; letter-spacing:.5px; display:flex; align-items:center; gap:14px}
+  .dot{width:16px;height:16px;border-radius:50%}
+  .dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)} .dot.warn{background:var(--warn)} .dot.dim{background:var(--dimmer)}
+  .hero .sub{color:var(--dim); margin-top:4px; font-size:13px}
+  .hero .right{margin-left:auto; display:flex; gap:26px; flex-wrap:wrap}
+  .kv{text-align:right}
+  .kv .n{font-size:22px; font-weight:700}
+  .kv .l{color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.6px}
+
+  .grid{display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); margin-bottom:16px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px}
+  .card h2{margin:0 0 12px; font-size:12px; text-transform:uppercase; letter-spacing:.8px; color:var(--dim); font-weight:600}
+  .tiles{display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .tile{background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:12px 14px}
+  .tile .l{color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.5px}
+  .tile .v{font-size:24px; font-weight:700; margin:2px 0 8px}
+  .tile .v small{font-size:13px; color:var(--dim); font-weight:500}
+  .bar{height:6px; border-radius:4px; background:#0a0e13; overflow:hidden}
+  .bar > i{display:block; height:100%; border-radius:4px; background:var(--ok); transition:width .4s}
+  .v.ok{color:var(--ok)} .v.warn{color:var(--warn)} .v.bad{color:var(--bad)}
+  i.ok{background:var(--ok)!important} i.warn{background:var(--warn)!important} i.bad{background:var(--bad)!important}
+
+  .badges{display:flex; gap:8px; flex-wrap:wrap}
+  .badge{font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid var(--line); color:var(--dim)}
+  .badge.ok{color:var(--ok); border-color:rgba(54,211,153,.4); background:var(--ok-bg)}
+  .badge.warn{color:var(--warn); border-color:rgba(251,189,35,.4); background:var(--warn-bg)}
+  .badge.bad{color:var(--bad); border-color:rgba(248,114,114,.4); background:var(--bad-bg)}
+
+  .row{display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px solid var(--line)}
+  .row:first-of-type{border-top:0}
+  .row .name{font-weight:600} .row .r{margin-left:auto; color:var(--dim); font-variant-numeric:tabular-nums}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .tag{font-size:11px; padding:2px 8px; border-radius:6px; background:#0a0e13; color:var(--dim); border:1px solid var(--line)}
+  .tag.active{color:var(--ok); border-color:rgba(54,211,153,.3)}
+  .tag.failed,.tag.inactive{color:var(--bad); border-color:rgba(248,114,114,.3)}
+
+  .events{max-height:340px; overflow:auto}
+  .ev{display:flex; gap:10px; padding:6px 0; border-top:1px solid var(--line); font-size:13px}
+  .ev:first-child{border-top:0}
+  .ev time{color:var(--dimmer); white-space:nowrap; font-variant-numeric:tabular-nums}
+  .ev .lv{text-transform:uppercase; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; height:fit-content}
+  .lv.error,.lv.err{color:var(--bad); background:var(--bad-bg)} .lv.warn{color:var(--warn); background:var(--warn-bg)}
+  .lv.notice,.lv.info,.lv.log{color:var(--accent); background:rgba(56,189,248,.1)}
+  .wide{grid-column:1/-1}
+  .pills{display:flex; flex-wrap:wrap; gap:6px}
+  .pill{font-size:12px; padding:3px 9px; border-radius:8px; background:var(--panel2); border:1px solid var(--line); font-variant-numeric:tabular-nums}
+  .pill b{color:var(--accent)}
+  .muted{color:var(--dimmer); font-size:12px}
+  .err-banner{background:var(--bad-bg); border:1px solid rgba(248,114,114,.4); color:var(--bad); padding:10px 14px; border-radius:10px; margin-bottom:12px; display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🛡 <b>Survive</b></div>
+  <div class="meta">
+    <span id="host"></span>
+    <span id="ver"></span>
+    <span><span class="pulse" id="pulse"></span> <span id="updated">connecting…</span></span>
+  </div>
+</header>
+
+<div class="err-banner" id="errb"></div>
+
+<div class="hero" id="hero">
+  <div>
+    <div class="state"><span class="dot dim" id="sdot"></span><span id="sstate">—</span></div>
+    <div class="sub" id="ssub"></div>
+  </div>
+  <div class="right">
+    <div class="kv"><div class="n" id="h-uptime">—</div><div class="l">Uptime</div></div>
+    <div class="kv"><div class="n" id="h-reboots">—</div><div class="l">Reboots</div></div>
+    <div class="kv"><div class="n" id="h-reboot">—</div><div class="l">Auto-reboot</div></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>System vitals</h2>
+    <div class="tiles">
+      <div class="tile"><div class="l">CPU</div><div class="v" id="cpu">—</div><div class="bar"><i id="cpu-b"></i></div></div>
+      <div class="tile"><div class="l">Temperature</div><div class="v" id="temp">—</div><div class="bar"><i id="temp-b"></i></div></div>
+      <div class="tile"><div class="l">Memory</div><div class="v" id="mem">—</div><div class="bar"><i id="mem-b"></i></div></div>
+      <div class="tile"><div class="l">Disk /</div><div class="v" id="disk">—</div><div class="bar"><i id="disk-b"></i></div></div>
+    </div>
+    <div style="margin-top:12px" class="badges" id="power"></div>
+    <div class="muted" id="load" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Crash-loop guard</h2>
+    <div id="cl-empty" class="muted">No services at or above the restart threshold.</div>
+    <div id="cl-list"></div>
+    <div class="muted" id="cl-foot" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Services</h2>
+    <div id="svc"></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card wide">
+    <h2>Listening ports &amp; Docker</h2>
+    <div class="muted" style="margin-bottom:6px">Open TCP ports on this host</div>
+    <div class="pills" id="ports"></div>
+    <div class="muted" style="margin:14px 0 6px">Docker containers</div>
+    <div id="docker"></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card wide">
+    <h2>Recent incidents</h2>
+    <div class="events" id="events"><div class="muted">No incidents logged.</div></div>
+  </div>
+</div>
+
+<div class="muted" style="text-align:center;margin:18px 0">
+  Survive watchdog · read-only · auto-refresh 4s
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const sev = (v,w,b) => v>=b?'bad':v>=w?'warn':'ok';
+function human(s){
+  s=Math.max(0,Math.floor(s));
+  const d=Math.floor(s/86400); s%=86400;
+  const h=Math.floor(s/3600); s%=3600;
+  const m=Math.floor(s/60);
+  if(d) return `${d}d ${h}h`;
+  if(h) return `${h}h ${m}m`;
+  if(m) return `${m}m ${s%60}s`;
+  return `${s}s`;
+}
+function meter(id,val,pct,cls){
+  $(id).className='v '+cls;
+  $(id+'-b').style.width=Math.min(100,pct)+'%';
+  $(id+'-b').className=cls;
+}
+
+async function tick(){
+  let d;
+  try{
+    const r=await fetch('/api/status',{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    d=await r.json();
+  }catch(e){
+    $('#errb').style.display='block';
+    $('#errb').textContent='Cannot reach Survive API: '+e.message;
+    $('#pulse').style.background='var(--bad)';
+    $('#updated').textContent='disconnected';
+    return;
+  }
+  $('#errb').style.display='none';
+  const sv=d.survive, sy=d.system;
+
+  // header
+  $('#host').textContent=d.hostname;
+  $('#ver').textContent='v'+sv.version;
+  $('#updated').textContent='updated '+new Date(d.ts*1000).toLocaleTimeString();
+  $('#pulse').style.background='var(--ok)';
+
+  // hero
+  const map={healthy:['ok','HEALTHY'],failing:['bad','FAILING'],unknown:['warn','UNKNOWN']};
+  const [cls,label]=map[sv.overall]||['warn','UNKNOWN'];
+  $('#hero').className='hero '+cls;
+  $('#sdot').className='dot '+cls;
+  $('#sstate').textContent=sv.service==='active'?label:'WATCHDOG '+sv.service.toUpperCase();
+  $('#ssub').textContent = sv.overall==='failing'
+    ? `Faults: ${sv.faults.join(', ')} · failing for ${human(sv.failing_for)} · repair round ${sv.action_step}`
+    : `Watchdog active · healthy for ${human(sv.healthy_for)} · grace ${sv.grace_period}s / reboot ${sv.reboot_after}s`;
+  $('#h-uptime').textContent=human(sy.uptime);
+  $('#h-reboots').textContent=sv.reboot_count;
+  $('#h-reboot').textContent=sv.reboot_enabled?'ON':'OFF';
+  $('#h-reboot').style.color=sv.reboot_enabled?'var(--ok)':'var(--dim)';
+
+  // vitals
+  $('#cpu').innerHTML=sy.cpu_pct+'<small>%</small>';
+  meter('#cpu',sy.cpu_pct,sy.cpu_pct,sev(sy.cpu_pct,60,85));
+  if(sy.cpu_temp!=null){$('#temp').innerHTML=sy.cpu_temp+'<small>°C</small>';meter('#temp',sy.cpu_temp,sy.cpu_temp,sev(sy.cpu_temp,60,75));}
+  else {$('#temp').textContent='n/a';}
+  const mm=sy.mem; $('#mem').innerHTML=mm.used_pct+'<small>% · '+(mm.used_mb/1024).toFixed(1)+'/'+(mm.total_mb/1024).toFixed(1)+'G</small>';
+  meter('#mem',mm.used_pct,mm.used_pct,sev(mm.used_pct,75,90));
+  const dk=sy.disk; $('#disk').innerHTML=dk.used_pct+'<small>% · '+dk.used_gb+'/'+dk.total_gb+'G</small>';
+  meter('#disk',dk.used_pct,dk.used_pct,sev(dk.used_pct,80,90));
+  $('#load').textContent='Load '+ (sy.loadavg||[]).join('  ') + '  ·  '+sy.ncpu+' cores';
+
+  // power / throttle
+  const pw=$('#power'); pw.innerHTML='';
+  const th=sy.throttle;
+  if(!th.flags || th.flags.length===0){ pw.innerHTML='<span class="badge ok">Power OK</span>'; }
+  else { th.flags.forEach(f=>{ const b=document.createElement('span'); b.className='badge '+(f.now?'bad':'warn'); b.textContent=f.label; pw.appendChild(b); }); }
+
+  // crash-loop
+  const cl=d.crashloop, cll=$('#cl-list'); cll.innerHTML='';
+  if(!cl.units.length){ $('#cl-empty').style.display='block'; }
+  else{
+    $('#cl-empty').style.display='none';
+    cl.units.forEach(u=>{
+      const row=document.createElement('div'); row.className='row';
+      row.innerHTML=`<span class="dot ${u.looping?'bad':'ok'}"></span><span class="name mono">${u.unit.replace(/\.service$/,'')}</span><span class="r">${u.restarts}×</span>`;
+      cll.appendChild(row);
+    });
+  }
+  $('#cl-foot').textContent=`Threshold ${cl.threshold} restarts / window · ${cl.count} unit(s) have restarted this boot`;
+
+  // services
+  const sc=$('#svc'); sc.innerHTML='';
+  d.services.forEach(s=>{
+    const row=document.createElement('div'); row.className='row';
+    const ok=s.state==='active';
+    row.innerHTML=`<span class="dot ${ok?'ok':'bad'}"></span><span class="name mono">${s.unit.replace(/\.service$/,'')}</span><span class="r"><span class="tag ${s.state}">${s.state}</span></span>`;
+    sc.appendChild(row);
+  });
+
+  // ports
+  const pc=$('#ports'); pc.innerHTML='';
+  d.network.ports.forEach(p=>{
+    const el=document.createElement('span'); el.className='pill';
+    el.innerHTML=`<b>${p.port}</b>${p.proc?' '+p.proc:''}`;
+    pc.appendChild(el);
+  });
+  const dc=$('#docker'); dc.innerHTML='';
+  if(!d.network.docker.length){ dc.innerHTML='<span class="muted">none</span>'; }
+  d.network.docker.forEach(c=>{
+    const row=document.createElement('div'); row.className='row';
+    const up=/^Up/i.test(c.status);
+    row.innerHTML=`<span class="dot ${up?'ok':'warn'}"></span><span class="name mono">${c.name}</span><span class="r">${c.ports.map(p=>`<span class="tag">${p}</span>`).join(' ')||'<span class="muted">internal</span>'}</span>`;
+    dc.appendChild(row);
+  });
+
+  // events
+  const ec=$('#events'); ec.innerHTML='';
+  if(!d.events.length){ ec.innerHTML='<div class="muted">No incidents logged.</div>'; }
+  d.events.forEach(e=>{
+    const row=document.createElement('div'); row.className='ev';
+    row.innerHTML=`<time>${e.time}</time><span class="lv ${e.level}">${e.level}</span><span>${e.msg}</span>`;
+    ec.appendChild(row);
+  });
+}
+tick();
+setInterval(tick,4000);
+</script>
+</body>
+</html>

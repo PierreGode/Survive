@@ -64,11 +64,35 @@ sudo ./install.sh
 ```
 
 Options: `--no-hardware-watchdog` (do not enable the hardware watchdog),
-`--no-start` (install and enable, but do not start yet).
+`--no-start` (install and enable, but do not start yet),
+`--with-web` (also install the web dashboard, see below).
 
 The installer installs `/usr/local/bin/survive`, `/etc/survive/survive.conf`
 (an existing configuration is kept) and `survive.service`, makes sure SSH is
 enabled and starts the service.
+
+## Web dashboard
+
+An optional, read-only status page that shows everything at a glance: overall
+health, system vitals (CPU, temperature, memory, disk, load), under-voltage /
+throttling, the crash-loop guard, watched services, every listening TCP port
+and Docker container, and the recent incident log. It auto-refreshes and needs
+no build step or dependencies — just Python 3 (standard library only).
+
+```bash
+sudo ./install.sh --with-web            # or, on an existing install:
+sudo install -m 0755 web/survive-web.py /usr/local/bin/survive-web
+sudo mkdir -p /usr/local/share/survive-web
+sudo install -m 0644 web/index.html /usr/local/share/survive-web/index.html
+sudo install -m 0644 web/survive-web.service /etc/systemd/system/
+sudo systemctl enable --now survive-web
+```
+
+Then open `http://<pi>:8099`. The port and bind address are set in
+`survive-web.service` (`SURVIVE_WEB_PORT`, `SURVIVE_WEB_HOST`); it binds to
+`0.0.0.0` by default, so restrict it (e.g. to `127.0.0.1` or a VPN interface)
+if the host is not on a trusted network. The dashboard only reads state and
+never changes anything.
 
 ## Usage
 

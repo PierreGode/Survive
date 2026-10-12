@@ -2,7 +2,7 @@
 #
 # Install the Survive self-healing service.
 #
-# Usage: sudo ./install.sh [--no-hardware-watchdog] [--no-start]
+# Usage: sudo ./install.sh [--no-hardware-watchdog] [--no-start] [--with-web]
 
 set -euo pipefail
 
@@ -11,15 +11,21 @@ BIN=/usr/local/bin/survive
 CONF_DIR=/etc/survive
 UNIT=/etc/systemd/system/survive.service
 WATCHDOG_CONF=/etc/systemd/system.conf.d/survive-watchdog.conf
+WEB_BIN=/usr/local/bin/survive-web
+WEB_DIR=/usr/local/share/survive-web
+WEB_UNIT=/etc/systemd/system/survive-web.service
 
 HW_WATCHDOG=true
 START=true
+WITH_WEB=false
 for arg in "$@"; do
     case "$arg" in
         --no-hardware-watchdog) HW_WATCHDOG=false ;;
         --no-start) START=false ;;
+        --with-web) WITH_WEB=true ;;
         -h | --help)
-            echo "Usage: sudo $0 [--no-hardware-watchdog] [--no-start]"
+            echo "Usage: sudo $0 [--no-hardware-watchdog] [--no-start] [--with-web]"
+            echo "  --with-web  also install the web dashboard (http on port 8099)"
             exit 0
             ;;
         *)
@@ -100,8 +106,25 @@ if [[ "$START" == true ]]; then
     "$BIN" check || true
 fi
 
+# Optional read-only web dashboard (http://<pi>:8099).
+if [[ "$WITH_WEB" == true ]]; then
+    if command -v python3 >/dev/null 2>&1; then
+        echo "Installing web dashboard ($WEB_UNIT)"
+        install -m 0755 "$SRC/web/survive-web.py" "$WEB_BIN"
+        mkdir -p "$WEB_DIR"
+        install -m 0644 "$SRC/web/index.html" "$WEB_DIR/index.html"
+        install -m 0644 "$SRC/web/survive-web.service" "$WEB_UNIT"
+        systemctl daemon-reload
+        systemctl enable survive-web.service >/dev/null
+        [[ "$START" == true ]] && systemctl restart survive-web.service
+    else
+        echo "python3 not found; skipping web dashboard" >&2
+    fi
+fi
+
 echo
 echo "Survive installed."
 echo "  Status:  survive status   |  systemctl status survive"
 echo "  Logs:    journalctl -u survive -f"
 echo "  Config:  $CONF_DIR/survive.conf"
+[[ "$WITH_WEB" == true ]] && echo "  Web:     http://$(hostname -I | awk '{print $1}'):8099"

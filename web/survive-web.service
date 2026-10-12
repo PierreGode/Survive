@@ -1,0 +1,21 @@
+[Unit]
+Description=Survive web dashboard
+Documentation=https://github.com/PierreGode/Survive
+After=network.target survive.service
+Wants=survive.service
+
+[Service]
+Type=simple
+# Reads Survive's state, system metrics, systemctl/docker/vcgencmd — needs root.
+ExecStart=/usr/bin/python3 /usr/local/bin/survive-web
+Environment=SURVIVE_WEB_HOST=0.0.0.0
+Environment=SURVIVE_WEB_PORT=8099
+Environment=SURVIVE_WEB_DIR=/usr/local/share/survive-web
+Restart=always
+RestartSec=5
+# Read-only dashboard; keep /usr /etc /boot read-only but leave docker/vcgencmd working.
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
