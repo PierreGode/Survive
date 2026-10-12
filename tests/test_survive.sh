@@ -200,6 +200,69 @@ test_network_repair_steps_cycle() {
     assert_eq "${calls[*]}" "reconnect restart bounce driver reconnect" "network repairs escalate and cycle"
 }
 
+test_crashloop_windowed_detection() {
+    setup
+    RUN_DIR="$TMP/run.$RANDOM"
+    local acted=()
+    run_action() { acted+=("$*"); }
+    # First pass establishes a baseline; nothing should happen.
+    restart_counts() { printf 'ollama.service 0\nfoo.service 2\n'; }
+    now() { echo 100; }
+    check_crashloops
+    assert_eq "${#acted[@]}" 0 "no action on the first (baseline) pass"
+    # 60s later ollama has restarted 40 more times -> crash loop; foo is fine.
+    restart_counts() { printf 'ollama.service 40\nfoo.service 3\n'; }
+    now() { echo 160; }
+    check_crashloops
+    assert_eq "${acted[*]}" "systemctl stop ollama.service systemctl reset-failed ollama.service" \
+        "the looping unit (only) is stopped and reset"
+}
+
+test_crashloop_immediate_catch() {
+    setup
+    RUN_DIR="$TMP/run.$RANDOM"
+    local acted=()
+    run_action() { acted+=("$*"); }
+    # No baseline yet, but a unit is already restarting hard (the ollama case).
+    restart_counts() { printf 'bar.service 53000\nok.service 1\n'; }
+    now() { echo 10; }
+    check_crashloops
+    assert_eq "${acted[*]}" "systemctl stop bar.service systemctl reset-failed bar.service" \
+        "a unit already looping hard is caught on the first pass"
+}
+
+test_crashloop_guard_disabled() {
+    setup
+    CRASHLOOP_GUARD=false
+    RUN_DIR="$TMP/run.$RANDOM"
+    local acted=()
+    run_action() { acted+=("$*"); }
+    restart_counts() { printf 'bar.service 53000\n'; }
+    now() { echo 10; }
+    check_crashloops
+    assert_eq "${#acted[@]}" 0 "nothing happens when CRASHLOOP_GUARD=false"
+}
+
+test_crashloop_protects_and_respects_config() {
+    setup
+    local acted=()
+    run_action() { acted+=("$*"); }
+    contain_crashloop survive.service 999
+    contain_crashloop ssh.service 999
+    assert_eq "${#acted[@]}" 0 "protected units (survive/ssh) are never stopped"
+    CRASHLOOP_IGNORE="ollama.service"
+    contain_crashloop ollama.service 999
+    assert_eq "${#acted[@]}" 0 "an ignored unit is left running"
+    CRASHLOOP_IGNORE=""
+    CRASHLOOP_ACTION=log
+    contain_crashloop ollama.service 999
+    assert_eq "${#acted[@]}" 0 "CRASHLOOP_ACTION=log leaves the unit running"
+    CRASHLOOP_ACTION=stop
+    contain_crashloop ollama.service 999
+    assert_eq "${acted[*]}" "systemctl stop ollama.service systemctl reset-failed ollama.service" \
+        "an unprotected unit is stopped and reset"
+}
+
 for test in $(declare -F | awk '{ print $3 }' | grep '^test_'); do
     "$test"
 done

@@ -56,6 +56,15 @@ load_defaults() {
     TEMP_WARN=80                   # degrees Celsius
     WATCH_SERVICES=""              # extra services to keep running
 
+    # Crash-loop guard: a service stuck restarting in a tight loop pegs the
+    # CPU and can make the whole Pi unresponsive. Detected from systemd's
+    # NRestarts counter and contained so the system stays reachable.
+    CRASHLOOP_GUARD=true
+    CRASHLOOP_THRESHOLD=15         # restarts within the window = crash loop
+    CRASHLOOP_WINDOW=120           # seconds the restarts are counted over
+    CRASHLOOP_ACTION=stop          # stop (stop + reset-failed) | log (only record)
+    CRASHLOOP_IGNORE=""            # extra units to never stop (space separated)
+
     STATE_DIR=/var/lib/survive     # persistent across reboots
     RUN_DIR=/run/survive           # per boot, survives daemon restarts
     EVENT_LOG_MAX_LINES=2000
@@ -73,7 +82,8 @@ load_config() {
     for var in CHECK_INTERVAL GRACE_PERIOD ACTION_INTERVAL REBOOT_AFTER SSH_PORT \
         REBOOT_BACKOFF_THRESHOLD MAX_REBOOT_DELAY HEALTHY_RESET_TIME \
         PACKAGE_MANAGER_WAIT REBOOT_FORCE_TIMEOUT MAINTENANCE_INTERVAL \
-        DISK_USAGE_THRESHOLD MEMORY_MIN_AVAILABLE_PCT TEMP_WARN EVENT_LOG_MAX_LINES; do
+        DISK_USAGE_THRESHOLD MEMORY_MIN_AVAILABLE_PCT TEMP_WARN EVENT_LOG_MAX_LINES \
+        CRASHLOOP_THRESHOLD CRASHLOOP_WINDOW; do
         if ! is_uint "${!var}"; then
             log warn "Invalid value '${!var}' for $var, using default"
             local default
@@ -656,6 +666,93 @@ check_health() {
 }
 
 # --------------------------------------------------------------------------
+# Crash-loop guard
+# --------------------------------------------------------------------------
+
+# Units that must never be stopped even when they flap, so the guard can never
+# take down the watchdog itself or the SSH access it is meant to protect.
+CRASHLOOP_PROTECTED="survive.service ssh.service sshd.service ssh.socket"
+
+in_list() {
+    local needle=$1 item
+    shift
+    for item in "$@"; do
+        [[ "$item" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+# Emit "<unit> <NRestarts>" for every loaded service unit, in a single
+# systemctl call. Isolated so the tests can mock it.
+restart_counts() {
+    local units
+    units=$(systemctl list-units --type=service --all --no-legend --plain 2>/dev/null | awk '{ print $1 }')
+    [[ -n "$units" ]] || return 0
+    # shellcheck disable=SC2086
+    systemctl show --property=Id --property=NRestarts $units 2>/dev/null |
+        awk '/^Id=/ { id = substr($0, 4) } /^NRestarts=/ { print id, substr($0, 11) }'
+}
+
+# Stop (or only log) a unit that is restarting in a tight loop. Stopping it
+# frees the CPU and keeps the Pi reachable; the operator fixes the root cause
+# and starts it again.
+contain_crashloop() {
+    local unit=$1 restarts=$2
+    # shellcheck disable=SC2086
+    if in_list "$unit" $CRASHLOOP_PROTECTED $CRASHLOOP_IGNORE; then
+        event warn "Crash loop: $unit restarted ${restarts}x in ~${CRASHLOOP_WINDOW}s (protected/ignored; left running)"
+        return 0
+    fi
+    if [[ "$CRASHLOOP_ACTION" != stop ]]; then
+        event error "Crash loop: $unit restarted ${restarts}x in ~${CRASHLOOP_WINDOW}s (CRASHLOOP_ACTION=$CRASHLOOP_ACTION; left running)"
+        return 0
+    fi
+    event error "Crash loop: $unit restarted ${restarts}x in ~${CRASHLOOP_WINDOW}s; stopping it to free the CPU (fix the unit, then start it again)"
+    run_action systemctl stop "$unit"
+    run_action systemctl reset-failed "$unit"
+}
+
+# Detect units whose restart count climbs by >= CRASHLOOP_THRESHOLD within
+# CRASHLOOP_WINDOW seconds, by comparing snapshots of systemd's NRestarts
+# counter. The snapshot lives on the per-boot tmpfs so a reboot starts fresh.
+check_crashloops() {
+    [[ "$CRASHLOOP_GUARD" == true ]] || return 0
+    local snap="$RUN_DIR/restarts" tmp t unit count ts pn pt delta dt
+    local -A prev_n prev_t
+    t=$(now)
+    if [[ -r "$snap" ]]; then
+        while read -r unit count ts; do
+            is_uint "$count" && is_uint "$ts" || continue
+            prev_n["$unit"]=$count
+            prev_t["$unit"]=$ts
+        done <"$snap"
+    fi
+    tmp="$snap.tmp"
+    mkdir -p "$RUN_DIR" 2>/dev/null
+    : >"$tmp" 2>/dev/null || tmp=""
+    while read -r unit count; do
+        is_uint "$count" || continue
+        [[ -n "$tmp" ]] && printf '%s %s %s\n' "$unit" "$count" "$t" >>"$tmp"
+        pn=${prev_n["$unit"]:-}
+        pt=${prev_t["$unit"]:-}
+        if [[ -n "$pn" && -n "$pt" ]] && ((count >= pn && t > pt)); then
+            delta=$((count - pn))
+            dt=$((t - pt))
+            # Normalise the observed increase to the configured window.
+            if ((delta > 0 && delta * CRASHLOOP_WINDOW / dt >= CRASHLOOP_THRESHOLD)); then
+                contain_crashloop "$unit" "$delta"
+            fi
+        elif [[ -z "$pn" ]] && ((count >= CRASHLOOP_THRESHOLD)); then
+            # No baseline yet (first pass) but the unit is already restarting
+            # hard (e.g. thousands of times); contain it immediately.
+            contain_crashloop "$unit" "$count"
+        fi
+    done < <(restart_counts)
+    [[ -n "$tmp" ]] && mv -f "$tmp" "$snap" 2>/dev/null
+    return 0
+}
+
+# --------------------------------------------------------------------------
 # Main loop
 # --------------------------------------------------------------------------
 
@@ -746,6 +843,7 @@ daemon() {
         [[ -n "$FAULTS" ]] && describe_faults "$FAULTS"
         t=$(now)
         evaluate "$t" "$FAULTS"
+        check_crashloops
         if ((t - LAST_MAINTENANCE >= MAINTENANCE_INTERVAL || LAST_MAINTENANCE == 0)); then
             check_health
             LAST_MAINTENANCE=$t
@@ -770,6 +868,11 @@ cmd_check() {
         echo "temp:    $((temp / 1000))C"
     fi
     have vcgencmd && echo "power:   $(vcgencmd get_throttled 2>/dev/null)"
+    if [[ "$CRASHLOOP_GUARD" == true ]] && have systemctl; then
+        local loops
+        loops=$(restart_counts | awk -v n="$CRASHLOOP_THRESHOLD" '$2 + 0 >= n { printf "%s(%s) ", $1, $2 }')
+        echo "loops:   ${loops:-none at or above $CRASHLOOP_THRESHOLD restarts}"
+    fi
     return $rc
 }
 
