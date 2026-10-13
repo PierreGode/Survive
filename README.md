@@ -1,6 +1,7 @@
 # Survive
+<img width="220" height="220" alt="image" src="https://github.com/user-attachments/assets/fce5ece6-0745-4910-ad08-7aa8a4aa6a8b" />
+<p></p>
 Raspberry pi self healing
-
 Survive is an installable systemd service that keeps a Raspberry Pi healthy and,
 above all, **reachable over SSH**. It continuously monitors the network, the SSH
 daemon and the system health, lets the Pi recover on its own first, then
